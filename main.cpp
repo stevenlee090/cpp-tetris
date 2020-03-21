@@ -1,4 +1,5 @@
 #include <iostream>
+#include <string.h>
 #include <curses.h>
 using namespace std;
 
@@ -6,8 +7,8 @@ using namespace std;
 
 wstring tetromino[7];
 
-int nFieldWidth = 12;
-int nFieldHeight = 18;
+int nFieldWidth = 12;   // 10 or 12
+int nFieldHeight = 18;  // 20 or 18
 unsigned char *pField = nullptr;
 
 int nScreenWidth = 80;      // console screen size x
@@ -38,6 +39,17 @@ int Rotate(int px, int py, int r)
     }
 
     return 0;
+}
+
+/**
+ * given a window and screen, print the screen contents on the window
+ * then refreshes the window
+ */
+void PrintAndRefreshScreen(WINDOW *win, char *screen)
+{
+    // wclear(win);
+    mvwprintw(win, 0, 0, screen);
+    wrefresh(win);
 }
 
 int main(int argc, char ** argv)
@@ -83,40 +95,74 @@ int main(int argc, char ** argv)
     for (int x = 0; x < nFieldWidth; x++) {
         for (int y = 0; y < nFieldHeight; y++) {
             // set board to 0 unless it is on the border
-            pField[y * nFieldWidth + x] = (x == 0 || x == nFieldWidth - 1 || y == nFieldWidth - 1) ? 9 : 0;
+            pField[y * nFieldWidth + x] = (x == 0 || x == nFieldWidth - 1 || y == nFieldHeight - 1) ? 9 : 0;
+
+            // DEBUG
+            // cout << static_cast<unsigned>(pField[y * nFieldWidth + x]) << endl;
         }
+    }
+
+    char *screen = new char[nScreenWidth * nScreenHeight];
+
+    for (int i = 0; i < nScreenWidth * nScreenHeight; i++) {
+        screen[i] = ' ';
     }
 
     // init screen
     // set up memory and clear screen
     initscr();
+    cbreak();
+    noecho();
 
-    // y is the number of rows, x is the number of columns
-    int x, y;
-    x = 10;
-    y = 20;
+    int height, width, start_y, start_x;
+    height = nScreenHeight;
+    width = nScreenWidth;
+    start_y = start_x = 0;
 
-    move(y, x);
+    WINDOW * win = newwin(height, width, start_y, start_x);
+    refresh();
 
-    // print a string(const char *) to a window
-    printw("Hello World!");
-
-    // refresh screen
-    refresh(); 
-
-    // waits for user key input, returns int value of that key
-    int c = getch();
-
-    move(0, 0);
-    printw("%d", c);
-
-    // clear screen;
-    clear();
+    PrintAndRefreshScreen(win, screen);
 
     getch();
 
+
+
+
+    bool game_over = false;
+    int count = 0;
+
+    while (!game_over)
+    {
+        // draw the tetris field
+        for (int x = 0; x < nFieldWidth; x++) {
+            for (int y = 0; y < nFieldHeight; y++) {
+                screen[(y + 2) * nScreenWidth + (x + 2)] = L" ABCDEFG=#"[pField[y * nFieldWidth + x]];
+            }
+        }
+
+        // display the frame
+        PrintAndRefreshScreen(win, screen);
+
+        int d = getch();
+
+        count++;
+    }
+
+
+    
+    
+    
+    int c = getch();
+
     // deallocate memory and ends ncurses
     endwin();
+
+    // for (int i = 0; i < nFieldWidth * nFieldHeight; i++) {
+    //     cout << pField[i] << endl;
+    // }
+
+    // cout << pField << endl;
 
     return 0;
 }
