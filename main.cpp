@@ -1,9 +1,13 @@
 #include <iostream>
+#include <thread>
+#include <chrono>
+#include <vector>
 #include <string.h>
 #include <curses.h>
 using namespace std;
 
 
+#define OFFSET 2
 
 wstring tetromino[7];
 
@@ -38,18 +42,46 @@ int Rotate(int px, int py, int r)
         index = 3 + py + (px * width);
     }
 
-    return 0;
+    return index;
 }
 
 /**
- * given a window and screen, print the screen contents on the window
- * then refreshes the window
+ * Print and refresh a window given a screen input.
+ * 
+ * The window is provided after it has been initialised.
+ * The screen consist of a set number of characters defined by screen width and
+ * screen height.
+ * 
+ * @param win Window which will be refreshed
+ * @param screen Screen whose contents will be displayed
  */
 void PrintAndRefreshScreen(WINDOW *win, char *screen)
 {
     // wclear(win);
     mvwprintw(win, 0, 0, screen);
     wrefresh(win);
+}
+
+bool DoesPieceFit(int nTetromino, int rotation, int pos_x, int pos_y)
+{
+    for (int px = 0; px < 4; px++) {
+        for (int py = 0; py < 4; py++) {
+            // get index into piece
+            int pi = Rotate(px, py, rotation);
+
+            // get index into field
+            int fi = (pos_y + py) * nFieldWidth + (pos_x + px);
+
+            if (pos_x + px >= 0 && pos_x + px < nFieldWidth) {
+                if (pos_y + py >= 0 && pos_y + py < nFieldHeight) {
+                    if (tetromino[nTetromino][pi] == L'X' && pField[fi] != 0) {
+                        return false; // collision detected
+                    }
+                }
+            }
+        }
+    }
+    return true;
 }
 
 int main(int argc, char ** argv)
@@ -120,6 +152,11 @@ int main(int argc, char ** argv)
     start_y = start_x = 0;
 
     WINDOW * win = newwin(height, width, start_y, start_x);
+
+    // enable arrow keys to be compared with defined constants
+    keypad(win, true);
+    nodelay(win, true);
+    
     refresh();
 
     PrintAndRefreshScreen(win, screen);
@@ -130,39 +167,78 @@ int main(int argc, char ** argv)
 
 
     bool game_over = false;
-    int count = 0;
+
+    int nCurrentPiece = 0;
+    int nCurrentRotation = 0;
+    int nCurrentX = nFieldWidth / 2;
+    int nCurrentY = 0;
+
+    bool bKey[4];
 
     while (!game_over)
     {
+        // game timing -------------------------------
+        this_thread::sleep_for(chrono::milliseconds(50));
+
+        // input -------------------------------------
+        int c = wgetch(win);
+
+        // for (int k = 0; k < 4; k++) {
+        //     bKey[k] = (0x8000 & GetAsync)
+        // }
+
+        // game logic --------------------------------
+        if (c == KEY_LEFT) 
+        {
+            if (DoesPieceFit(nCurrentPiece, nCurrentRotation, nCurrentX - 1, nCurrentY))
+            {
+                nCurrentX = nCurrentX - 1;
+            }
+        }
+
+        if (c == KEY_RIGHT)
+        {
+            if (DoesPieceFit(nCurrentPiece, nCurrentRotation, nCurrentX + 1, nCurrentY))
+            {
+                nCurrentX = nCurrentX + 1;
+            }
+        }
+
+        // render output -----------------------------
+        
         // draw the tetris field
         for (int x = 0; x < nFieldWidth; x++) {
             for (int y = 0; y < nFieldHeight; y++) {
-                screen[(y + 2) * nScreenWidth + (x + 2)] = L" ABCDEFG=#"[pField[y * nFieldWidth + x]];
+                screen[(y + OFFSET) * nScreenWidth + (x + OFFSET)] = L" ABCDEFG=#"[pField[y * nFieldWidth + x]];
+            }
+        }
+
+        // draw current piece
+        for (int px = 0; px < 4; px++) {
+            for (int py = 0; py < 4; py++) {
+                if (tetromino[nCurrentPiece][Rotate(px, py, nCurrentRotation)] == L'X') {
+                    // cout << "Statement is true" << endl;
+                    screen[(nCurrentY + py + OFFSET) * nScreenWidth + (nCurrentX + px + OFFSET)] = nCurrentPiece + 65;
+                }
             }
         }
 
         // display the frame
         PrintAndRefreshScreen(win, screen);
 
-        int d = getch();
+        // int d = getch();
 
-        count++;
+        // nCurrentPiece++;
+        // if (nCurrentPiece == 7) {
+        //     nCurrentPiece = 0;
+        // }
     }
-
-
-    
     
     
     int c = getch();
 
     // deallocate memory and ends ncurses
     endwin();
-
-    // for (int i = 0; i < nFieldWidth * nFieldHeight; i++) {
-    //     cout << pField[i] << endl;
-    // }
-
-    // cout << pField << endl;
 
     return 0;
 }
