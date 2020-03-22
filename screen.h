@@ -2,6 +2,7 @@
 #define SCREEN_H
 
 #include <curses.h>
+#include <iostream>
 
 /**
  * Screen class will be responsible to handling all the window/display
@@ -18,18 +19,26 @@
 class Screen {
 
 private:
-    int width;
-    int height;
+    int nScreenWidth;
+    int nScreenHeight;
     int start_x;
     int start_y;
+
     WINDOW * w;
+    char *screen = nullptr;
+
+    // width and height of the tetris playing field
+    int nFieldWidth;
+    int nFieldHeight;
+
+    void FillEmptyScreen();
 
 public:
-    Screen();   // default constructor
+    Screen(int fw, int fh);   // default constructor
+    // TODO: optional constructor which can specify tetris field size
     ~Screen();  // destructor
     
-    void PrintAndRefreshScreen(WINDOW *win, char *screen, int score);
-
+    void PrintAndRefreshScreen(int score);
 };
 
 #endif // SCREEN_H
