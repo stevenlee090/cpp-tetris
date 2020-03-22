@@ -53,10 +53,11 @@ int Rotate(int px, int py, int r)
  * @param win Window which will be refreshed
  * @param screen Screen whose contents will be displayed
  */
-void PrintAndRefreshScreen(WINDOW *win, char *screen)
+void PrintAndRefreshScreen(WINDOW *win, char *screen, int score)
 {
     // wclear(win);
     mvwprintw(win, 0, 0, screen);
+    mvwprintw(win, 2, nFieldWidth + 6, "SCORE: %8d", score);
     wrefresh(win);
 }
 
@@ -157,9 +158,8 @@ int main(int argc, char ** argv)
     
     refresh();
 
-    PrintAndRefreshScreen(win, screen);
-
-    getch();
+    // PrintAndRefreshScreen(win, screen);
+    // getch();
 
 
 
@@ -171,14 +171,16 @@ int main(int argc, char ** argv)
     int nCurrentX = nFieldWidth / 2;
     int nCurrentY = 0;
 
-    bool bKey[4];
-    bool bRotateHold = false;
+    // bool bKey[4];
+    // bool bRotateHold = false;
 
-    const int nSpeed = 20;
+    int nSpeed = 20;
     int nSpeedCounter = 0;
     bool bForceDown = false;
+    int nPieceCount = 0; // control game difficulty
+    int nScore = 0;
+    
     srand(time(NULL));
-
     vector<int> vLines;
 
     while (!game_over)
@@ -226,6 +228,13 @@ int main(int argc, char ** argv)
                     }
                 }
 
+                nPieceCount++;
+                if (nPieceCount % 10 == 0) {
+                    if (nSpeed >= 10) {
+                        nSpeed--; // decrease game tick
+                    }
+                }
+
                 // --- Check for complete lines 
                 for (int py = 0; py < 4; py++) {
                     if (nCurrentY + py < nFieldHeight - 1) {
@@ -248,6 +257,15 @@ int main(int argc, char ** argv)
                             vLines.push_back(nCurrentY + py);
                         }
                     }
+                }
+
+                nScore += 25;
+
+                if (!vLines.empty()) {
+                    // left bit shift by vector size
+                    // e.g. if size = 2, then 1 gets bit shifted 2 placed to the left
+                    // resulting in 1 * 2 * 2 = 4
+                    nScore += (1 << vLines.size()) * 100;
                 }
 
                 // --- Choose next piece
@@ -285,7 +303,7 @@ int main(int argc, char ** argv)
 
         if (!vLines.empty())
         {
-            PrintAndRefreshScreen(win, screen);
+            PrintAndRefreshScreen(win, screen, nScore);
             this_thread::sleep_for(chrono::milliseconds(400));
 
             for (auto &v : vLines) {
@@ -303,14 +321,20 @@ int main(int argc, char ** argv)
         }
 
         // display the frame
-        PrintAndRefreshScreen(win, screen);
+        PrintAndRefreshScreen(win, screen, nScore);
     }
-    
-    
-    int c = getch();
 
     // deallocate memory and ends ncurses
     endwin();
+
+    // game over
+    cout << "Game Over! The final score was: " << nScore << endl;
+
+    // for (int i = 0; i < nScreenWidth * nScreenHeight; i++) {
+    //     cout << screen[i];
+    // }
+    // cout << endl;
+
 
     return 0;
 }
