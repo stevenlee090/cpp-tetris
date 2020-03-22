@@ -9,3 +9,8 @@ This repository contains a simple tetris implementation using c++ and the `ncurs
 
 * `ncurses` library
 * This should work on both MacOS and Linux systems.
+
+
+## Features to Add
+
+- [ ] Hard-drop tetris piece with space bar
