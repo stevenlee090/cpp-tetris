@@ -4,8 +4,9 @@
 #include <vector>
 #include <random>
 #include <ctime>
-#include <string.h>
+#include <string>
 #include <curses.h>
+
 using namespace std;
 
 
@@ -21,9 +22,11 @@ int nScreenWidth = 80;      // console screen size x
 int nScreenHeight = 30;     // console screen size y
 
 /**
- * given (px, py) and rotation index r
- * return the corresponding tetromino index
- * (0, 90, 180, 270) clockwise rotation for r = (0, 1, 2, 3)
+ * Rotate an arbitrary tetris sub-block and return the resulting block index.
+ * 
+ * @param px Tetris piece x coordinate
+ * @param py Tetris piece y coordinate
+ * @return r Resulting tetris piece index
  */
 int Rotate(int px, int py, int r)
 {
@@ -61,6 +64,14 @@ void PrintAndRefreshScreen(WINDOW *win, char *screen, int score)
     wrefresh(win);
 }
 
+/**
+ * Checks if a tetris piece can fit into a particular board position
+ * 
+ * @param nTetromino Integer specifying which tetris piece it is
+ * @param rotation Integer specifying the orientation of the tetris piece
+ * @param pos_x X position of the playing field
+ * @param pos_y Y position of the playing field
+ */
 bool DoesPieceFit(int nTetromino, int rotation, int pos_x, int pos_y)
 {
     for (int px = 0; px < 4; px++) {
@@ -127,9 +138,6 @@ int main(int argc, char ** argv)
         for (int y = 0; y < nFieldHeight; y++) {
             // set board to 0 unless it is on the border
             pField[y * nFieldWidth + x] = (x == 0 || x == nFieldWidth - 1 || y == nFieldHeight - 1) ? 9 : 0;
-
-            // DEBUG
-            // cout << static_cast<unsigned>(pField[y * nFieldWidth + x]) << endl;
         }
     }
 
@@ -192,10 +200,6 @@ int main(int argc, char ** argv)
 
         // input -------------------------------------
         int c = wgetch(win);
-
-        // for (int k = 0; k < 4; k++) {
-        //     bKey[k] = (0x8000 & GetAsync)
-        // }
 
         // game logic --------------------------------
         if (c == KEY_LEFT && DoesPieceFit(nCurrentPiece, nCurrentRotation, nCurrentX - 1, nCurrentY)) {
@@ -329,12 +333,6 @@ int main(int argc, char ** argv)
 
     // game over
     cout << "Game Over! The final score was: " << nScore << endl;
-
-    // for (int i = 0; i < nScreenWidth * nScreenHeight; i++) {
-    //     cout << screen[i];
-    // }
-    // cout << endl;
-
 
     return 0;
 }

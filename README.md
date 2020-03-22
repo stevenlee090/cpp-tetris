@@ -12,6 +12,7 @@ This repository contains a simple tetris implementation using c++ and the `ncurs
 
 ## Todo
 - [ ] Clean up the existing codes
+- [ ] Basic start screen with instruction and "press to continue"
 
 ## Features to Add
 
