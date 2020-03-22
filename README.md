@@ -10,6 +10,8 @@ This repository contains a simple tetris implementation using c++ and the `ncurs
 * `ncurses` library
 * This should work on both MacOS and Linux systems.
 
+## Todo
+- [ ] Clean up the existing codes
 
 ## Features to Add
 
