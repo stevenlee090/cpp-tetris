@@ -18,3 +18,4 @@ This repository contains a simple tetris implementation using c++ and the `ncurs
 
 - [ ] Hard-drop tetris piece with space bar
 - [ ] Sound effect
+- [ ] Background Music
