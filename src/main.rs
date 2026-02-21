@@ -1,3 +1,4 @@
+mod ai;
 mod game;
 mod ui;
 
@@ -34,6 +35,7 @@ fn main() -> io::Result<()> {
 
 fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
     let mut game = GameState::new();
+    let mut last_piece_count = game.piece_count;
 
     loop {
         // Draw frame
@@ -54,19 +56,28 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> 
                         KeyCode::Char('p') if !game.game_over => {
                             game.paused = !game.paused;
                         }
-                        KeyCode::Left if !game.game_over => {
+                        KeyCode::Char('a') if !game.game_over => {
+                            game.ai_mode = !game.ai_mode;
+                            if game.ai_mode {
+                                let (rot, x) = ai::compute_best_move(&game);
+                                game.set_ai_target(rot, x);
+                                last_piece_count = game.piece_count;
+                            }
+                        }
+                        // Movement keys — only when AI is off
+                        KeyCode::Left if !game.game_over && !game.ai_mode => {
                             game.move_left();
                         }
-                        KeyCode::Right if !game.game_over => {
+                        KeyCode::Right if !game.game_over && !game.ai_mode => {
                             game.move_right();
                         }
-                        KeyCode::Down if !game.game_over => {
+                        KeyCode::Down if !game.game_over && !game.ai_mode => {
                             game.move_down();
                         }
-                        KeyCode::Up if !game.game_over => {
+                        KeyCode::Up if !game.game_over && !game.ai_mode => {
                             game.rotate_piece();
                         }
-                        KeyCode::Char(' ') if !game.game_over => {
+                        KeyCode::Char(' ') if !game.game_over && !game.ai_mode => {
                             game.hard_drop();
                         }
                         _ => {}
@@ -75,7 +86,18 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> 
             }
         } else {
             // Timeout → game tick
-            game.tick();
+            if game.ai_mode {
+                // Recompute target when a new piece has spawned and the board
+                // is settled (no pending line-clear animation).
+                if game.piece_count != last_piece_count && game.lines_to_clear.is_empty() {
+                    last_piece_count = game.piece_count;
+                    let (rot, x) = ai::compute_best_move(&game);
+                    game.set_ai_target(rot, x);
+                }
+                game.ai_step();
+            } else {
+                game.tick();
+            }
         }
     }
 

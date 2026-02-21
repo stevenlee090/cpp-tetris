@@ -1,4 +1,6 @@
 use rand::Rng;
+use std::collections::VecDeque;
+use std::time::Instant;
 
 pub const FIELD_WIDTH: usize = 12;
 pub const FIELD_HEIGHT: usize = 18;
@@ -14,6 +16,12 @@ pub const TETROMINOES: [&str; 7] = [
     "..X...X..XX.....", // J
 ];
 
+pub struct BoardStats {
+    pub max_height: i32,
+    pub holes: u32,
+    pub bumpiness: i32,
+}
+
 pub struct GameState {
     pub field: [[u8; FIELD_WIDTH]; FIELD_HEIGHT],
     pub current_piece: usize,
@@ -28,6 +36,17 @@ pub struct GameState {
     pub lines_to_clear: Vec<usize>,
     pub game_over: bool,
     pub paused: bool,
+    pub ai_mode: bool,
+    pub ai_target_rotation: usize,
+    pub ai_target_x: i32,
+    // Analytics
+    pub lines_cleared: u32,
+    pub singles: u32,
+    pub doubles: u32,
+    pub triples: u32,
+    pub tetrises: u32,
+    pub lines_history: VecDeque<u8>, // lines cleared per last 20 pieces
+    pub start_time: Instant,
 }
 
 impl GameState {
@@ -47,11 +66,12 @@ impl GameState {
         let current_piece = rng.gen_range(0..7);
         let next_piece = rng.gen_range(0..7);
 
+        let spawn_x = (FIELD_WIDTH as i32 / 2) - 2;
         let mut gs = GameState {
             field,
             current_piece,
             current_rotation: 0,
-            current_x: (FIELD_WIDTH as i32 / 2) - 2,
+            current_x: spawn_x,
             current_y: 0,
             next_piece,
             score: 0,
@@ -61,6 +81,16 @@ impl GameState {
             lines_to_clear: Vec::new(),
             game_over: false,
             paused: false,
+            ai_mode: false,
+            ai_target_rotation: 0,
+            ai_target_x: spawn_x,
+            lines_cleared: 0,
+            singles: 0,
+            doubles: 0,
+            triples: 0,
+            tetrises: 0,
+            lines_history: VecDeque::with_capacity(20),
+            start_time: Instant::now(),
         };
 
         // Check if initial piece fits (it should always fit at spawn)
@@ -150,6 +180,15 @@ impl GameState {
         }
     }
 
+    /// Returns the Y position where the current piece would land (for ghost rendering).
+    pub fn ghost_drop_y(&self) -> i32 {
+        let mut y = self.current_y;
+        while self.does_piece_fit(self.current_piece, self.current_rotation, self.current_x, y + 1) {
+            y += 1;
+        }
+        y
+    }
+
     pub fn hard_drop(&mut self) {
         if self.game_over || self.paused {
             return;
@@ -228,6 +267,21 @@ impl GameState {
             }
         }
 
+        // Record per-piece analytics
+        let n = self.lines_to_clear.len() as u8;
+        self.lines_cleared += n as u32;
+        match n {
+            1 => self.singles += 1,
+            2 => self.doubles += 1,
+            3 => self.triples += 1,
+            4.. => self.tetrises += 1,
+            _ => {}
+        }
+        if self.lines_history.len() >= 20 {
+            self.lines_history.pop_front();
+        }
+        self.lines_history.push_back(n);
+
         // Spawn next piece
         let mut rng = rand::thread_rng();
         self.current_piece = self.next_piece;
@@ -239,6 +293,80 @@ impl GameState {
         // Check game over
         if !self.does_piece_fit(self.current_piece, self.current_rotation, self.current_x, self.current_y) {
             self.game_over = true;
+        }
+    }
+
+    /// Snapshot of board quality metrics used by the analytics panel.
+    pub fn board_stats(&self) -> BoardStats {
+        let num_cols = FIELD_WIDTH - 2;
+        let mut heights = vec![0i32; num_cols];
+        for (i, col) in (1..FIELD_WIDTH - 1).enumerate() {
+            for row in 0..(FIELD_HEIGHT - 1) {
+                if self.field[row][col] != 0 {
+                    heights[i] = (FIELD_HEIGHT - 1 - row) as i32;
+                    break;
+                }
+            }
+        }
+        let max_height = heights.iter().copied().max().unwrap_or(0);
+        let mut holes = 0u32;
+        for (i, &h) in heights.iter().enumerate() {
+            if h == 0 {
+                continue;
+            }
+            let col = i + 1;
+            let top_row = (FIELD_HEIGHT as i32 - 1 - h) as usize;
+            for row in (top_row + 1)..(FIELD_HEIGHT - 1) {
+                if self.field[row][col] == 0 {
+                    holes += 1;
+                }
+            }
+        }
+        let bumpiness: i32 = heights.windows(2).map(|w| (w[0] - w[1]).abs()).sum();
+        BoardStats { max_height, holes, bumpiness }
+    }
+
+    /// Store the AI's chosen target placement.
+    pub fn set_ai_target(&mut self, rotation: usize, x: i32) {
+        self.ai_target_rotation = rotation;
+        self.ai_target_x = x;
+    }
+
+    /// One 50 ms step when AI mode is active.
+    /// Rotates and slides 2 steps toward the target each tick (2× speed),
+    /// then hard-drops once aligned.
+    pub fn ai_step(&mut self) {
+        if self.game_over || self.paused {
+            self.tick();
+            return;
+        }
+        // Must drain pending line clears via tick() before touching the new
+        // piece.  Without this, a second hard_drop can call lock_piece() which
+        // does lines_to_clear.clear(), orphaning rows already marked as 8 in
+        // the field — they'd never be removed.
+        if !self.lines_to_clear.is_empty() {
+            self.tick();
+            return;
+        }
+        // 1. Rotate toward target rotation
+        if self.current_rotation != self.ai_target_rotation {
+            self.rotate_piece();
+        }
+        // 2. Slide 2 steps toward target x per tick
+        for _ in 0..2 {
+            if self.current_x < self.ai_target_x {
+                self.move_right();
+            } else if self.current_x > self.ai_target_x {
+                self.move_left();
+            }
+        }
+        // 3. Hard-drop once aligned; otherwise advance gravity normally
+        if self.current_rotation == self.ai_target_rotation
+            && self.current_x == self.ai_target_x
+        {
+            self.hard_drop();
+        } else {
+            self.tick();
         }
     }
 
