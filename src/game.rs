@@ -1,5 +1,7 @@
 use rand::Rng;
 use std::collections::VecDeque;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::time::Instant;
 
 pub const FIELD_WIDTH: usize = 12;
@@ -293,7 +295,59 @@ impl GameState {
         // Check game over
         if !self.does_piece_fit(self.current_piece, self.current_rotation, self.current_x, self.current_y) {
             self.game_over = true;
+            self.write_gameover_log();
         }
+    }
+
+    /// Write the final board state and stats to `tetris_gameover.log` so the
+    /// losing sequence can be inspected after the game ends.
+    fn write_gameover_log(&self) {
+        let path = "tetris_gameover.log";
+        let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) else {
+            return;
+        };
+
+        // Compute board metrics
+        let num_cols = FIELD_WIDTH - 2;
+        let mut heights = vec![0i32; num_cols];
+        for (i, col) in (1..FIELD_WIDTH - 1).enumerate() {
+            for row in 0..(FIELD_HEIGHT - 1) {
+                if self.field[row][col] != 0 {
+                    heights[i] = (FIELD_HEIGHT - 1 - row) as i32;
+                    break;
+                }
+            }
+        }
+        let max_height = heights.iter().copied().max().unwrap_or(0);
+        let agg_height: i32 = heights.iter().sum();
+        let mut holes = 0u32;
+        for (i, &h) in heights.iter().enumerate() {
+            if h == 0 { continue; }
+            let col = i + 1;
+            let top_row = (FIELD_HEIGHT as i32 - 1 - h) as usize;
+            for row in (top_row + 1)..(FIELD_HEIGHT - 1) {
+                if self.field[row][col] == 0 { holes += 1; }
+            }
+        }
+        let bumpiness: i32 = heights.windows(2).map(|w| (w[0] - w[1]).abs()).sum();
+
+        let _ = writeln!(f, "=== GAME OVER ===");
+        let _ = writeln!(f, "Score: {}  Pieces: {}  Lines: {}", self.score, self.piece_count, self.lines_cleared);
+        let _ = writeln!(f, "1L/2L/3L/4L: {}/{}/{}/{}", self.singles, self.doubles, self.triples, self.tetrises);
+        let _ = writeln!(f, "MaxHt: {}  AggHt: {}  Holes: {}  Bumpy: {}", max_height, agg_height, holes, bumpiness);
+        let _ = writeln!(f, "Heights: {:?}", heights);
+        let _ = writeln!(f, "Board (top to bottom):");
+        for row in 0..(FIELD_HEIGHT - 1) {
+            let mut line = String::new();
+            for col in 1..(FIELD_WIDTH - 1) {
+                let v = self.field[row][col];
+                line.push(if v == 0 { '.' } else { char::from_digit(v as u32, 10).unwrap_or('#') });
+            }
+            let _ = writeln!(f, "  |{}|", line);
+        }
+        let _ = writeln!(f, "  +{}+", "-".repeat(FIELD_WIDTH - 2));
+        let _ = writeln!(f, "Trend (last 20): {:?}", self.lines_history.iter().copied().collect::<Vec<_>>());
+        let _ = writeln!(f, "");
     }
 
     /// Snapshot of board quality metrics used by the analytics panel.

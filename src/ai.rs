@@ -1,7 +1,7 @@
 use crate::game::{GameState, FIELD_HEIGHT, FIELD_WIDTH, TETROMINOES};
 
 /// Returns the (rotation, x) pair that maximises the heuristic score for the
-/// current piece.  Called once per piece spawn when AI mode is active.
+/// current piece, using one-piece lookahead with the next piece.
 pub fn compute_best_move(game: &GameState) -> (usize, i32) {
     let mut best_score = f64::NEG_INFINITY;
     let mut best_rotation = game.current_rotation;
@@ -9,20 +9,21 @@ pub fn compute_best_move(game: &GameState) -> (usize, i32) {
 
     for rotation in 0..4usize {
         for x in -2..(FIELD_WIDTH as i32) {
-            // Skip if the piece can't be placed at this column at spawn row
-            if !game.does_piece_fit(game.current_piece, rotation, x, 0) {
+            if !piece_fits_field(&game.field, game.current_piece, rotation, x, 0) {
                 continue;
             }
 
-            // Find the final drop y from the top
             let mut drop_y = 0i32;
-            while game.does_piece_fit(game.current_piece, rotation, x, drop_y + 1) {
+            while piece_fits_field(&game.field, game.current_piece, rotation, x, drop_y + 1) {
                 drop_y += 1;
             }
 
             let (locked_field, lines) =
                 simulate_lock(&game.field, game.current_piece, rotation, x, drop_y);
-            let score = score_field(&locked_field, lines);
+
+            // One-piece lookahead: best score achievable with the next piece
+            let next_best = best_placement_score(&locked_field, game.next_piece);
+            let score = score_field(&locked_field, lines) + 0.5 * next_best;
 
             if score > best_score {
                 best_score = score;
@@ -33,6 +34,60 @@ pub fn compute_best_move(game: &GameState) -> (usize, i32) {
     }
 
     (best_rotation, best_x)
+}
+
+/// Best score achievable by placing `piece` on `field` in any rotation/column.
+fn best_placement_score(field: &[[u8; FIELD_WIDTH]; FIELD_HEIGHT], piece: usize) -> f64 {
+    let mut best = f64::NEG_INFINITY;
+    for rotation in 0..4usize {
+        for x in -2..(FIELD_WIDTH as i32) {
+            if !piece_fits_field(field, piece, rotation, x, 0) {
+                continue;
+            }
+            let mut drop_y = 0i32;
+            while piece_fits_field(field, piece, rotation, x, drop_y + 1) {
+                drop_y += 1;
+            }
+            let (locked, lines) = simulate_lock(field, piece, rotation, x, drop_y);
+            let s = score_field(&locked, lines);
+            if s > best {
+                best = s;
+            }
+        }
+    }
+    if best == f64::NEG_INFINITY { 0.0 } else { best }
+}
+
+/// Check whether `piece` at (rotation, pos_x, pos_y) fits in an arbitrary field
+/// (no GameState required, so it can be used on simulated boards).
+fn piece_fits_field(
+    field: &[[u8; FIELD_WIDTH]; FIELD_HEIGHT],
+    piece: usize,
+    rotation: usize,
+    pos_x: i32,
+    pos_y: i32,
+) -> bool {
+    let tetromino = TETROMINOES[piece];
+    for px in 0..4usize {
+        for py in 0..4usize {
+            let pi = GameState::rotate(px, py, rotation);
+            let fi_x = pos_x + px as i32;
+            let fi_y = pos_y + py as i32;
+            if tetromino.chars().nth(pi).unwrap_or('.') == 'X' {
+                if fi_x < 0
+                    || fi_x >= FIELD_WIDTH as i32
+                    || fi_y < 0
+                    || fi_y >= FIELD_HEIGHT as i32
+                {
+                    return false;
+                }
+                if field[fi_y as usize][fi_x as usize] != 0 {
+                    return false;
+                }
+            }
+        }
+    }
+    true
 }
 
 /// Clones the field, writes the piece at (rotation, x, y), clears complete
@@ -65,8 +120,7 @@ fn simulate_lock(
     (f, lines)
 }
 
-/// Removes complete interior rows (values 8 from pending clears count as
-/// filled) and returns how many were removed.
+/// Removes complete interior rows (values != 0) and returns how many were removed.
 fn clear_lines_sim(field: &mut [[u8; FIELD_WIDTH]; FIELD_HEIGHT]) -> u32 {
     let mut lines = 0u32;
     let mut row = (FIELD_HEIGHT - 2) as i32; // last playfield row (exclude border)
@@ -92,24 +146,35 @@ fn clear_lines_sim(field: &mut [[u8; FIELD_WIDTH]; FIELD_HEIGHT]) -> u32 {
 }
 
 // ---------------------------------------------------------------------------
-// Heuristic scoring  (Yiyuan Lee weights)
+// Heuristic scoring
 // ---------------------------------------------------------------------------
 
 fn score_field(field: &[[u8; FIELD_WIDTH]; FIELD_HEIGHT], lines_cleared: u32) -> f64 {
     let heights = column_heights(field);
     let agg_height: i32 = heights.iter().sum();
+    let max_height = heights.iter().copied().max().unwrap_or(0);
     let holes = count_holes(field, &heights) as i32;
+    let covered = count_covered_holes(field, &heights) as i32;
     let bump = bumpiness(&heights);
+
+    // Steep extra penalty when the stack enters the danger zone (> 12 rows).
+    // Each additional row above 12 costs 3× extra to strongly discourage
+    // letting the board climb near the top.
+    let danger = if max_height > 12 {
+        (max_height - 12) as f64 * 3.0
+    } else {
+        0.0
+    };
 
     -0.510066 * agg_height as f64
         + 0.760666 * lines_cleared as f64
-        - 0.356630 * holes as f64
-        - 0.184483 * bump
+        - 0.75    * holes as f64    // was -0.356630; holes are catastrophic
+        - 0.35    * covered as f64  // extra penalty for deeply buried holes
+        - 0.356630 * bump           // was -0.184483; high bumpiness blocks future pieces
+        - danger
 }
 
 /// Height of each interior column (index 0 = column 1 in the field).
-/// Height is the number of rows from the topmost filled cell down to
-/// (not including) the bottom border.
 fn column_heights(field: &[[u8; FIELD_WIDTH]; FIELD_HEIGHT]) -> Vec<i32> {
     let num_cols = FIELD_WIDTH - 2; // exclude left/right border columns
     let mut heights = vec![0i32; num_cols];
@@ -141,6 +206,31 @@ fn count_holes(field: &[[u8; FIELD_WIDTH]; FIELD_HEIGHT], heights: &[i32]) -> u3
         }
     }
     holes
+}
+
+/// Total burial depth: for each hole, count how many filled cells sit above it
+/// in the same column.  A hole buried under 3 blocks is far harder to clear
+/// than one buried under 1, so this adds a proportional penalty on top of the
+/// plain hole count.
+fn count_covered_holes(field: &[[u8; FIELD_WIDTH]; FIELD_HEIGHT], heights: &[i32]) -> u32 {
+    let mut total = 0u32;
+    for (i, &h) in heights.iter().enumerate() {
+        if h == 0 {
+            continue;
+        }
+        let col = i + 1;
+        let top_row = (FIELD_HEIGHT as i32 - 1 - h) as usize;
+        let mut cover = 0u32;
+        for row in top_row..(FIELD_HEIGHT - 1) {
+            if field[row][col] != 0 {
+                cover += 1;
+            } else {
+                // This cell is a hole; add the number of blocks overhead
+                total += cover;
+            }
+        }
+    }
+    total
 }
 
 /// Sum of absolute differences between adjacent column heights.
