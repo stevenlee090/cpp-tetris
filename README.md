@@ -1,21 +1,73 @@
-# Tetris in C++
+# Tetris in Rust
 
-This repository contains a simple tetris implementation using c++ and the `ncurses` library.
+A fully working terminal Tetris game implemented in Rust using [ratatui](https://github.com/ratatui-org/ratatui) for TUI rendering.
 
-* This is still a work in progress, hopefully I have enough time to clean everything up.
-* This is a small extension project based off this [Tetris tutorial](https://youtu.be/8OK8_tHeCIA) with the main difference that this uses the `ncurses` library instead of the `Windows` library.
+> Originally a C++ / ncurses prototype — re-implemented from scratch in Rust by **Claude Sonnet 4.6** using **Claude Code v2.1.50**.
+
+---
+
+## Features
+
+- All 7 standard tetrominoes (I, S, Z, O, T, L, J) with per-piece colors
+- Rotation, collision detection, and line clearing
+- Hard drop (Space) and soft drop (↓)
+- Score tracking: +25 per piece placed, bonus for multi-line clears
+- Speed increases every 10 pieces (up to a cap)
+- Next-piece preview
+- Pause / resume
+- Game-over screen with final score
+- Clean terminal restore on exit
 
 ## Prerequisites
 
-* `ncurses` library
-* This should work on both MacOS and Linux systems.
+- [Rust](https://www.rust-lang.org/tools/install) (edition 2021)
 
-## Todo
-- [ ] Clean up the existing codes
-- [ ] Basic start screen with instruction and "press to continue"
+## Build & Run
 
-## Features to Add
+```bash
+cargo build
+cargo run
+```
 
-- [ ] Hard-drop tetris piece with space bar
-- [ ] Sound effect
-- [ ] Background Music
+## Controls
+
+| Key       | Action       |
+|-----------|--------------|
+| `←` `→`  | Move         |
+| `↑`       | Rotate       |
+| `↓`       | Soft drop    |
+| `Space`   | Hard drop    |
+| `p`       | Pause/Resume |
+| `q` / `Esc` | Quit       |
+
+## Scoring
+
+| Event              | Points              |
+|--------------------|---------------------|
+| Piece locked       | +25                 |
+| 1 line cleared     | +200                |
+| 2 lines cleared    | +400                |
+| 3 lines cleared    | +800                |
+| 4 lines cleared    | +1600               |
+
+## Project Structure
+
+```
+├── Cargo.toml
+└── src/
+    ├── main.rs   — terminal init/cleanup, game loop, input handling
+    ├── game.rs   — game state, tetrominoes, physics, scoring
+    └── ui.rs     — ratatui rendering (board, sidebar, overlays)
+```
+
+## Dependencies
+
+| Crate       | Version | Purpose                     |
+|-------------|---------|-----------------------------|
+| ratatui     | 0.29    | TUI rendering               |
+| crossterm   | 0.28    | Cross-platform terminal I/O |
+| rand        | 0.8     | Random piece selection      |
+
+---
+
+*Generated with [Claude Sonnet 4.6](https://www.anthropic.com/claude) using [Claude Code](https://github.com/anthropics/claude-code) v2.1.50*
