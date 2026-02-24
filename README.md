@@ -38,6 +38,7 @@ cargo run
 | `↓`       | Soft drop    |
 | `Space`   | Hard drop    |
 | `p`       | Pause/Resume |
+| `a`       | Toggle AI mode |
 | `q` / `Esc` | Quit       |
 
 ## Scoring
