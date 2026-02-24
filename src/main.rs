@@ -1,4 +1,5 @@
 mod ai;
+mod audio;
 mod game;
 mod ui;
 
@@ -36,10 +37,20 @@ fn main() -> io::Result<()> {
 fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
     let mut game = GameState::new();
     let mut last_piece_count = game.piece_count;
+    let mut audio = audio::AudioManager::new(); // None if no audio device
 
     loop {
         // Draw frame
         terminal.draw(|f| render_ui(f, &game))?;
+
+        // Drain and play any sounds queued by the game logic
+        if let Some(ref mut mgr) = audio {
+            for event in game.pending_sounds.drain(..) {
+                mgr.play_event(&event);
+            }
+        } else {
+            game.pending_sounds.clear();
+        }
 
         // Poll for input with 50ms timeout
         if event::poll(Duration::from_millis(50))? {
@@ -55,6 +66,11 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> 
                         }
                         KeyCode::Char('p') if !game.game_over => {
                             game.paused = !game.paused;
+                        }
+                        KeyCode::Char('m') => {
+                            if let Some(ref mut mgr) = audio {
+                                mgr.toggle_music();
+                            }
                         }
                         KeyCode::Char('a') if !game.game_over => {
                             game.ai_mode = !game.ai_mode;

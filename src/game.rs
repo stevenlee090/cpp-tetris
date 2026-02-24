@@ -7,6 +7,16 @@ use std::time::Instant;
 pub const FIELD_WIDTH: usize = 12;
 pub const FIELD_HEIGHT: usize = 18;
 
+#[derive(Debug, Clone)]
+pub enum AudioEvent {
+    Move,
+    Rotate,
+    Lock,
+    HardDrop,
+    LineClear(u32),
+    GameOver,
+}
+
 // 7 tetrominoes as 16-char strings (4×4 grids), matching C++ shapes
 pub const TETROMINOES: [&str; 7] = [
     "..X...X...X...X.", // I
@@ -49,6 +59,7 @@ pub struct GameState {
     pub tetrises: u32,
     pub lines_history: VecDeque<u8>, // lines cleared per last 20 pieces
     pub start_time: Instant,
+    pub pending_sounds: Vec<AudioEvent>,
 }
 
 impl GameState {
@@ -93,6 +104,7 @@ impl GameState {
             tetrises: 0,
             lines_history: VecDeque::with_capacity(20),
             start_time: Instant::now(),
+            pending_sounds: Vec::new(),
         };
 
         // Check if initial piece fits (it should always fit at spawn)
@@ -170,6 +182,7 @@ impl GameState {
         }
         if self.does_piece_fit(self.current_piece, self.current_rotation, self.current_x - 1, self.current_y) {
             self.current_x -= 1;
+            self.pending_sounds.push(AudioEvent::Move);
         }
     }
 
@@ -179,6 +192,7 @@ impl GameState {
         }
         if self.does_piece_fit(self.current_piece, self.current_rotation, self.current_x + 1, self.current_y) {
             self.current_x += 1;
+            self.pending_sounds.push(AudioEvent::Move);
         }
     }
 
@@ -198,6 +212,7 @@ impl GameState {
         while self.does_piece_fit(self.current_piece, self.current_rotation, self.current_x, self.current_y + 1) {
             self.current_y += 1;
         }
+        self.pending_sounds.push(AudioEvent::HardDrop);
         self.lock_piece();
     }
 
@@ -219,6 +234,7 @@ impl GameState {
         let new_rotation = (self.current_rotation + 1) % 4;
         if self.does_piece_fit(self.current_piece, new_rotation, self.current_x, self.current_y) {
             self.current_rotation = new_rotation;
+            self.pending_sounds.push(AudioEvent::Rotate);
         }
     }
 
@@ -269,6 +285,14 @@ impl GameState {
             }
         }
 
+        // Sound: LineClear fanfare, or Lock thud (skip Lock if hard-drop already queued)
+        let line_count = self.lines_to_clear.len() as u32;
+        if line_count > 0 {
+            self.pending_sounds.push(AudioEvent::LineClear(line_count));
+        } else if !matches!(self.pending_sounds.last(), Some(AudioEvent::HardDrop)) {
+            self.pending_sounds.push(AudioEvent::Lock);
+        }
+
         // Record per-piece analytics
         let n = self.lines_to_clear.len() as u8;
         self.lines_cleared += n as u32;
@@ -295,6 +319,7 @@ impl GameState {
         // Check game over
         if !self.does_piece_fit(self.current_piece, self.current_rotation, self.current_x, self.current_y) {
             self.game_over = true;
+            self.pending_sounds.push(AudioEvent::GameOver);
             self.write_gameover_log();
         }
     }
